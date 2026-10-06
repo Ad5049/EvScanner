@@ -11,7 +11,7 @@ st.set_page_config(
 
 BASE_URL = "https://api.theodds-api.com/v4/sports"
 
-# Hardcoded API Key as requested
+# Hardcoded API Key
 HARDCODED_API_KEY = "714895ce62ecdfdc29c3ce0e9c0c7580"
 
 # --- SIDEBAR CONTROLS ---
@@ -38,15 +38,15 @@ BOOKMAKERS = [
 @st.cache_data(ttl=3600)
 def fetch_sports_catalog(api_key):
     try:
-        response = requests.get(f"{BASE_URL}", params={"apiKey": api_key})
+        response = requests.get(BASE_URL, params={"apiKey": api_key})
         if response.status_code == 200:
             sports = response.json()
             return [s['key'] for s in sports if s.get('active', True)]
     except Exception:
         pass
-    return ["icehockey_nhl", "basketball_nba", "baseball_mlb"]
+    return ["icehockey_nhl", "basketball_nba", "baseball_mlb", "americanfootball_nfl"]
 
-# --- DATA FETCHING & QUOTA TRACKING LAYER ---
+# --- DATA FETCHING LAYER ---
 @st.cache_data(ttl=60)
 def fetch_odds_data(api_key, sport_keys):
     if not sport_keys:
@@ -58,7 +58,7 @@ def fetch_odds_data(api_key, sport_keys):
     if include_props:
         markets += ",player_props"
         
-    for sport_key in sport_keys[:5]:  # Capped at top 5 active sports to optimize performance
+    for sport_key in sport_keys[:4]:  # Focused scan window on top 4 active sports
         url = f"{BASE_URL}/{sport_key}/odds/"
         params = {
             "apiKey": api_key,
@@ -73,9 +73,9 @@ def fetch_odds_data(api_key, sport_keys):
                 remaining_credits = response.headers['x-requests-remaining']
                 
             if response.status_code == 200:
-                all_raw_data.extend(response.json())
-            else:
-                st.sidebar.error(f"API Error [{sport_key}]: {response.status_code}")
+                data = response.json()
+                if isinstance(data, list):
+                    all_raw_data.extend(data)
         except Exception:
             continue
             
@@ -118,7 +118,7 @@ def main():
     if st.button("Run Fresh Scan"):
         st.cache_data.clear()
         
-    with st.spinner("Executing API request across active bookmaker matrices..."):
+    with st.spinner("Fetching active odds matrix across all configured books..."):
         raw_data, credits_left = fetch_odds_data(HARDCODED_API_KEY, available_sports)
         df = process_market_data(raw_data)
         
@@ -126,10 +126,10 @@ def main():
         st.sidebar.success(f"API Quota Remaining: {credits_left} credits")
         
     if not df.empty:
-        st.success(f"Successfully loaded board matrix. Filtering for edges >= {min_edge}% EV.")
+        st.success(f"Successfully loaded {len(df)} active lines. Filtering for edges >= {min_edge}% EV.")
         st.dataframe(df, use_container_width=True, height=500)
     else:
-        st.info("No active lines returned. Check active sport availability or API connection.")
+        st.warning("No active lines returned. Check your API credit balance or active sport availability.")
 
 if __name__ == "__main__":
     main()
