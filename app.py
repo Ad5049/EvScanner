@@ -33,17 +33,13 @@ PERSONAL_BOOKS = [
     "novig"
 ]
 
-# --- FETCH ACTIVE SPORTS CATALOG ---
-@st.cache_data(ttl=3600)
-def fetch_sports_catalog(api_key):
-    try:
-        response = requests.get(BASE_URL, params={"apiKey": api_key})
-        if response.status_code == 200:
-            sports = response.json()
-            return [s['key'] for s in sports if s.get('active', True)]
-    except Exception:
-        pass
-    return ["icehockey_nhl", "basketball_nba", "baseball_mlb"]
+# --- GUARANTEED ACTIVE SPORTS SLUGS ---
+TARGET_SPORTS = [
+    "baseball_mlb",
+    "icehockey_nhl",
+    "basketball_nba",
+    "americanfootball_nfl"
+]
 
 # --- DATA FETCHING LAYER ---
 def fetch_odds_data(api_key, sport_keys, progress_bar, status_text):
@@ -56,15 +52,15 @@ def fetch_odds_data(api_key, sport_keys, progress_bar, status_text):
     if include_props:
         markets += ",player_props"
         
-    total_steps = len(sport_keys[:4])
-    for idx, sport_key in enumerate(sport_keys[:4]):
-        status_text.text(f"Scanning full board [{idx + 1}/{total_steps}]: querying {sport_key}...")
+    total_steps = len(sport_keys)
+    for idx, sport_key in enumerate(sport_keys):
+        status_text.text(f"Scanning sport feed [{idx + 1}/{total_steps}]: querying {sport_key}...")
         progress_bar.progress((idx + 1) / total_steps)
         
         url = f"{BASE_URL}/{sport_key}/odds/"
         params = {
             "apiKey": api_key,
-            "markets": markets,
+            - "markets": markets,
             "oddsFormat": "american",
         }
         try:
@@ -121,7 +117,6 @@ def process_and_filter_markets(raw_data):
                     if price:
                         outcome_prices[key_id].append(price)
                         
-                    # Capture debug feed rows for transparency
                     if book_key in PERSONAL_BOOKS and price:
                         debug_rows.append({
                             "Sport": sport_title,
@@ -188,15 +183,13 @@ def main():
         
     st.markdown("---")
     
-    available_sports = fetch_sports_catalog(HARDCODED_API_KEY)
-    
     if run_scan:
         st.cache_data.clear()
         
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        raw_data, credits_left = fetch_odds_data(HARDCODED_API_KEY, available_sports, progress_bar, status_text)
+        raw_data, credits_left = fetch_odds_data(HARDCODED_API_KEY, TARGET_SPORTS, progress_bar, status_text)
         
         progress_bar.empty()
         status_text.empty()
@@ -206,7 +199,6 @@ def main():
         if credits_left:
             st.sidebar.success(f"API Quota Remaining: {credits_left} credits")
             
-        # Diagnostic metrics banner
         col_m1, col_m2, col_m3 = st.columns(3)
         col_m1.metric("Raw Events Downloaded", len(raw_data))
         col_m2.metric("Personal Book Lines Scanned", len(df_debug))
