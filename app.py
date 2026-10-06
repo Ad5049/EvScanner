@@ -33,7 +33,6 @@ PERSONAL_BOOKS = [
     "novig"
 ]
 
-# --- GUARANTEED ACTIVE SPORTS SLUGS ---
 TARGET_SPORTS = [
     "baseball_mlb",
     "icehockey_nhl",
@@ -60,7 +59,7 @@ def fetch_odds_data(api_key, sport_keys, progress_bar, status_text):
         url = f"{BASE_URL}/{sport_key}/odds/"
         params = {
             "apiKey": api_key,
-            - "markets": markets,
+            "markets": markets,
             "oddsFormat": "american",
         }
         try:
