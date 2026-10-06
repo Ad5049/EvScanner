@@ -22,6 +22,7 @@ max_odds_cap = st.sidebar.number_input("Max American Odds Cap (+400)", value=400
 
 include_props = st.checkbox("Include Player Props Scanning", value=False)
 exclude_started = st.checkbox("Exclude Live / Started Games", value=True)
+debug_mode = st.sidebar.checkbox("Show Raw Diagnostic Feed", value=True)
 
 PERSONAL_BOOKS = [
     "draftkings",
@@ -79,10 +80,10 @@ def fetch_odds_data(api_key, sport_keys, progress_bar, status_text):
             continue
             
     time.sleep(0.3)
-    status_text.text("Scan complete! Matching lines against your personal books...")
+    status_text.text(f"Scan complete! Downloaded {len(all_raw_data)} raw market events.")
     return all_raw_data, remaining_credits
 
-# --- CONVERT AMERICAN ODDS TO IMPLIED PROBABILITY ---
+# --- CONVERT AMERICAN ODDS TO PROBABILITY ---
 def american_to_prob(odds):
     if odds > 0:
         return 100 / (odds + 100)
@@ -92,6 +93,8 @@ def american_to_prob(odds):
 # --- +EV ENGINE & PERSONAL BOOK MATCHER ---
 def process_and_filter_markets(raw_data):
     rows = []
+    debug_rows = []
+    
     for event in raw_data:
         home_team = event.get('home_team')
         away_team = event.get('away_team')
@@ -102,9 +105,9 @@ def process_and_filter_markets(raw_data):
         if not bookmakers:
             continue
             
-        # Collect all prices per market outcome across the entire board to form market consensus
         outcome_prices = {}
         for book in bookmakers:
+            book_key = book.get('key')
             for market in book.get('markets', []):
                 m_key = market.get('key')
                 for outcome in market.get('outcomes', []):
@@ -118,7 +121,17 @@ def process_and_filter_markets(raw_data):
                     if price:
                         outcome_prices[key_id].append(price)
                         
-        # Evaluate each of your personal books against the market consensus
+                    # Capture debug feed rows for transparency
+                    if book_key in PERSONAL_BOOKS and price:
+                        debug_rows.append({
+                            "Sport": sport_title,
+                            "Book": book_key.upper(),
+                            "Matchup": f"{away_team} @ {home_team}",
+                            "Market": m_key.upper(),
+                            "Selection": name,
+                            "Price": price
+                        })
+                        
         for bookmaker in bookmakers:
             book_key = bookmaker.get('key')
             if book_key not in PERSONAL_BOOKS:
@@ -135,20 +148,15 @@ def process_and_filter_markets(raw_data):
                     if price and (price <= max_odds_cap):
                         all_prices = outcome_prices.get(key_id, [])
                         if len(all_prices) >= 2:
-                            # Calculate average market implied probability as baseline
                             probs = [american_to_prob(p) for p in all_prices if p]
                             if not probs:
                                 continue
                             avg_market_prob = sum(probs) / len(probs)
                             book_prob = american_to_prob(price)
                             
-                            # EV formula: (Book Prob * Decimal Odds) - 1, or probability discrepancy
                             ev_edge = round((avg_market_prob - book_prob) * 100, 2)
-                            
-                            # Alternatively, look for outlier numbers where book price is higher than consensus average
                             avg_price = sum(all_prices) / len(all_prices)
                             price_edge = round(((price - avg_price) / abs(avg_price)) * 100, 2) if avg_price != 0 else 0.0
-                            
                             effective_edge = max(ev_edge, price_edge)
                             
                             if effective_edge >= min_edge:
@@ -165,7 +173,7 @@ def process_and_filter_markets(raw_data):
                                     "Unit Stake": f"${base_unit_size:.2f}"
                                 })
                                 
-    return pd.DataFrame(rows).drop_duplicates()
+    return pd.DataFrame(rows).drop_duplicates(), pd.DataFrame(debug_rows).drop_duplicates()
 
 # --- MAIN APP INTERFACE ---
 def main():
@@ -193,16 +201,26 @@ def main():
         progress_bar.empty()
         status_text.empty()
         
-        df = process_and_filter_markets(raw_data)
+        df_plays, df_debug = process_and_filter_markets(raw_data)
         
         if credits_left:
             st.sidebar.success(f"API Quota Remaining: {credits_left} credits")
             
-        if not df.empty:
-            st.success(f"Found {len(df)} actionable plays matching your personal book criteria (Edge >= {min_edge}%).")
-            st.dataframe(df, use_container_width=True, height=500)
+        # Diagnostic metrics banner
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("Raw Events Downloaded", len(raw_data))
+        col_m2.metric("Personal Book Lines Scanned", len(df_debug))
+        col_m3.metric("Actionable +EV Plays Found", len(df_plays))
+        
+        if not df_plays.empty:
+            st.success(f"Found {len(df_plays)} actionable plays matching your criteria.")
+            st.dataframe(df_plays, use_container_width=True, height=400)
         else:
-            st.warning("No plays met the minimum edge threshold across your personal books right now. Try adjusting your minimum edge slider down to 2.0%.")
+            st.warning("Scan completed successfully, but no lines cleared the minimum edge threshold across your personal books.")
+            
+        if debug_mode and not df_debug.empty:
+            with st.expander("🔍 Raw Personal Book Lines Feed (Debug View)"):
+                st.dataframe(df_debug, use_container_width=True, height=300)
     else:
         st.info("Ready. Click **🚀 Scan All Books & Match Plays** above to execute the board sweep.")
 
