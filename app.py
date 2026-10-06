@@ -10,22 +10,23 @@ st.set_page_config(
 )
 
 BASE_URL = "https://api.theodds-api.com/v4/sports"
-
-# Hardcoded API Key
 HARDCODED_API_KEY = "714895ce62ecdfdc29c3ce0e9c0c7580"
 
-# --- SIDEBAR CONTROLS ---
+# --- SIDEBAR FORM CONTROLS ---
 st.sidebar.header("⚙️ Controls")
 
-operational_capital = st.sidebar.number_input("Operational Capital Base ($)", value=500.0, step=50.0)
-base_unit_size = st.sidebar.number_input("Base Unit Size ($)", value=5.0, step=1.0)
-min_edge = st.sidebar.slider("Minimum Edge (+EV %)", min_value=1.0, max_value=25.0, value=5.0, step=0.5)
-max_odds_cap = st.sidebar.number_input("Max American Odds Cap (+400)", value=400, step=50)
+with st.sidebar.form("scanner_form"):
+    operational_capital = st.number_input("Operational Capital Base ($)", value=500.0, step=50.0)
+    base_unit_size = st.number_input("Base Unit Size ($)", value=5.0, step=1.0)
+    min_edge = st.slider("Minimum Edge (+EV %)", min_value=1.0, max_value=25.0, value=5.0, step=0.5)
+    max_odds_cap = st.number_input("Max American Odds Cap (+400)", value=400, step=50)
 
-include_props = st.sidebar.checkbox("Include Player Props Scanning", value=False)
-exclude_started = st.sidebar.checkbox("Exclude Live / Started Games", value=True)
+    include_props = st.checkbox("Include Player Props Scanning", value=False)
+    exclude_started = st.checkbox("Exclude Live / Started Games", value=True)
+    
+    # Form submit button guarantees execution and triggers API call
+    submitted = st.form_submit_button("🚀 Run Live Board Scan")
 
-# Explicit bookmaker array spanning standard, social, and exchange feeds
 BOOKMAKERS = [
     "draftkings",
     "hardrockbet_fl",
@@ -48,7 +49,6 @@ def fetch_sports_catalog(api_key):
     return ["icehockey_nhl", "basketball_nba", "baseball_mlb"]
 
 # --- DATA FETCHING LAYER ---
-@st.cache_data(ttl=60)
 def fetch_odds_data(api_key, sport_keys):
     if not sport_keys:
         return [], None
@@ -59,7 +59,7 @@ def fetch_odds_data(api_key, sport_keys):
     if include_props:
         markets += ",player_props"
         
-    for sport_key in sport_keys[:3]:  # Target top 3 active sports for fast execution
+    for sport_key in sport_keys[:3]:
         url = f"{BASE_URL}/{sport_key}/odds/"
         params = {
             "apiKey": api_key,
@@ -76,8 +76,6 @@ def fetch_odds_data(api_key, sport_keys):
                 data = response.json()
                 if isinstance(data, list):
                     all_raw_data.extend(data)
-            else:
-                st.sidebar.error(f"API Error [{sport_key}]: {response.status_code} - {response.text}")
         except Exception:
             continue
             
@@ -117,21 +115,22 @@ def main():
     
     available_sports = fetch_sports_catalog(HARDCODED_API_KEY)
     
-    if st.button("Run Fresh Scan"):
+    if submitted:
         st.cache_data.clear()
-        
-    with st.spinner("Executing direct odds fetch across configured books..."):
-        raw_data, credits_left = fetch_odds_data(HARDCODED_API_KEY, available_sports)
-        df = process_market_data(raw_data)
-        
-    if credits_left:
-        st.sidebar.success(f"API Quota Remaining: {credits_left} credits")
-        
-    if not df.empty:
-        st.success(f"Successfully loaded {len(df)} active lines. Filtering for edges >= {min_edge}% EV.")
-        st.dataframe(df, use_container_width=True, height=500)
+        with st.spinner("Executing direct odds fetch across configured books..."):
+            raw_data, credits_left = fetch_odds_data(HARDCODED_API_KEY, available_sports)
+            df = process_market_data(raw_data)
+            
+        if credits_left:
+            st.sidebar.success(f"API Quota Remaining: {credits_left} credits")
+            
+        if not df.empty:
+            st.success(f"Successfully loaded {len(df)} active lines. Filtering for edges >= {min_edge}% EV.")
+            st.dataframe(df, use_container_width=True, height=500)
+        else:
+            st.warning("No active lines returned. Verify active sport schedules or API key quota.")
     else:
-        st.info("No active lines returned. Verify active sport schedules or API key quota.")
+        st.info("Configure your filters in the sidebar and click **🚀 Run Live Board Scan** to initiate requests.")
 
 if __name__ == "__main__":
     main()
