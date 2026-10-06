@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 BASE_URL = "https://api.theodds-api.com/v4/sports"
-HARDCODED_API_KEY = "714895ce62ecdfdc29c3ce0e9c0c7580"
+HARDCODED_API_KEY = "aa80562ae5fb97cfd71d78bc63a0cb1e"
 
 # --- SIDEBAR FORM CONTROLS ---
 st.sidebar.header("⚙️ Controls")
@@ -24,7 +24,6 @@ with st.sidebar.form("scanner_form"):
     include_props = st.checkbox("Include Player Props Scanning", value=False)
     exclude_started = st.checkbox("Exclude Live / Started Games", value=True)
     
-    # Form submit button guarantees execution and triggers API call
     submitted = st.form_submit_button("🚀 Run Live Board Scan")
 
 BOOKMAKERS = [
