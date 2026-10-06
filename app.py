@@ -23,7 +23,6 @@ max_odds_cap = st.sidebar.number_input("Max American Odds Cap (+400)", value=400
 include_props = st.checkbox("Include Player Props Scanning", value=False)
 exclude_started = st.checkbox("Exclude Live / Started Games", value=True)
 
-# Your target personal bookmaker array
 PERSONAL_BOOKS = [
     "draftkings",
     "hardrockbet_fl",
@@ -66,8 +65,6 @@ def fetch_odds_data(api_key, sport_keys, progress_bar, status_text):
             "apiKey": api_key,
             "markets": markets,
             "oddsFormat": "american",
-            # We omit the bookmaker restriction here so we scan ALL books for true market consensus, 
-            # then filter down to your personal books.
         }
         try:
             response = requests.get(url, params=params)
@@ -98,7 +95,6 @@ def process_and_filter_markets(raw_data):
         if not bookmakers:
             continue
             
-        # Build market price map across all books to find consensus/sharp baseline
         market_outcomes = {}
         for book in bookmakers:
             for market in book.get('markets', []):
@@ -114,11 +110,9 @@ def process_and_filter_markets(raw_data):
                     if price:
                         market_outcomes[key_id].append(price)
                         
-        # Evaluate personal books against the board
         for bookmaker in bookmakers:
             book_key = bookmaker.get('key')
             
-            # Keep only your personal books
             if book_key not in PERSONAL_BOOKS:
                 continue
                 
@@ -133,10 +127,7 @@ def process_and_filter_markets(raw_data):
                     if price and (price <= max_odds_cap):
                         all_prices = market_outcomes.get(key_id, [])
                         if len(all_prices) >= 2:
-                            # Simple average market consensus price check
                             avg_price = sum(all_prices) / len(all_prices)
-                            
-                            # Estimate crude edge percentage comparison
                             edge_val = round(((price - avg_price) / abs(avg_price)) * 100, 2) if avg_price != 0 else 0.0
                             
                             if edge_val >= min_edge:
@@ -164,7 +155,7 @@ def main():
     with col1:
         run_scan = st.button("🚀 Scan All Books & Match Plays", type="primary", use_container_width=True)
     with col2:
-        st.write(" Scans all available bookmaker lines, computes market value, and isolates bets available on **DraftKings, Hard Rock FL, Bovada, MyBookie, Fliff, and Novig**.")
+        st.write("Scans all available bookmaker lines, computes market value, and isolates bets available on **DraftKings, Hard Rock FL, Bovada, MyBookie, Fliff, and Novig**.")
         
     st.markdown("---")
     
@@ -181,7 +172,7 @@ def main():
         progress_bar.empty()
         status_text.empty()
         
-        df = process_และ_filter_markets(raw_data) if 'process_และ_filter_markets' else process_and_filter_markets(raw_data)
+        df = process_and_filter_markets(raw_data)
         
         if credits_left:
             st.sidebar.success(f"API Quota Remaining: {credits_left} credits")
