@@ -2,6 +2,7 @@ import os
 import requests
 import pandas as pd
 import streamlit as st
+import time
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -12,19 +13,15 @@ st.set_page_config(
 BASE_URL = "https://api.theodds-api.com/v4/sports"
 HARDCODED_API_KEY = "aa80562ae5fb97cfd71d78bc63a0cb1e"
 
-# --- SIDEBAR FORM CONTROLS ---
-st.sidebar.header("⚙️ Controls")
+# --- SIDEBAR CONTROLS (Non-scan configurations) ---
+st.sidebar.header("⚙️ Settings")
+operational_capital = st.sidebar.number_input("Operational Capital Base ($)", value=500.0, step=50.0)
+base_unit_size = st.sidebar.number_input("Base Unit Size ($)", value=5.0, step=1.0)
+min_edge = st.sidebar.slider("Minimum Edge (+EV %)", min_value=1.0, max_value=25.0, value=5.0, step=0.5)
+max_odds_cap = st.sidebar.number_input("Max American Odds Cap (+400)", value=400, step=50)
 
-with st.sidebar.form("scanner_form"):
-    operational_capital = st.number_input("Operational Capital Base ($)", value=500.0, step=50.0)
-    base_unit_size = st.number_input("Base Unit Size ($)", value=5.0, step=1.0)
-    min_edge = st.slider("Minimum Edge (+EV %)", min_value=1.0, max_value=25.0, value=5.0, step=0.5)
-    max_odds_cap = st.number_input("Max American Odds Cap (+400)", value=400, step=50)
-
-    include_props = st.checkbox("Include Player Props Scanning", value=False)
-    exclude_started = st.checkbox("Exclude Live / Started Games", value=True)
-    
-    submitted = st.form_submit_button("🚀 Run Live Board Scan")
+include_props = st.sidebar.checkbox("Include Player Props Scanning", value=False)
+exclude_started = st.sidebar.checkbox("Exclude Live / Started Games", value=True)
 
 BOOKMAKERS = [
     "draftkings",
@@ -47,8 +44,8 @@ def fetch_sports_catalog(api_key):
         pass
     return ["icehockey_nhl", "basketball_nba", "baseball_mlb"]
 
-# --- DATA FETCHING LAYER ---
-def fetch_odds_data(api_key, sport_keys):
+# --- DATA FETCHING LAYER WITH PROGRESS INDICATION ---
+def fetch_odds_data(api_key, sport_keys, progress_bar, status_text):
     if not sport_keys:
         return [], None
     
@@ -58,7 +55,11 @@ def fetch_odds_data(api_key, sport_keys):
     if include_props:
         markets += ",player_props"
         
-    for sport_key in sport_keys[:3]:
+    total_steps = len(sport_keys[:4])
+    for idx, sport_key in enumerate(sport_keys[:4]):
+        status_text.text(f"Scanning market feed [{idx + 1}/{total_steps}]: querying {sport_key} across active books...")
+        progress_bar.progress((idx + 1) / total_steps)
+        
         url = f"{BASE_URL}/{sport_key}/odds/"
         params = {
             "apiKey": api_key,
@@ -78,6 +79,8 @@ def fetch_odds_data(api_key, sport_keys):
         except Exception:
             continue
             
+    time.sleep(0.3)
+    status_text.text("Scan complete! Processing and filtering odds matrix...")
     return all_raw_data, remaining_credits
 
 # --- PARSING & +EV ENGINE ---
@@ -112,14 +115,33 @@ def process_market_data(raw_data):
 def main():
     st.title("⚡ +EV Market Scanner & Edge Engine")
     
+    # Prominent scan execution block on the main screen
+    st.markdown("### Live Board Controls")
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        run_scan = st.button("🚀 Run Live Board Scan", type="primary", use_container_width=True)
+    with col2:
+        st.write("Click to query active bookmaker feeds (DraftKings, Hard Rock FL, Bovada, MyBookie, Fliff, Novig) and decrement your API quota.")
+        
+    st.markdown("---")
+    
     available_sports = fetch_sports_catalog(HARDCODED_API_KEY)
     
-    if submitted:
+    if run_scan:
         st.cache_data.clear()
-        with st.spinner("Executing direct odds fetch across configured books..."):
-            raw_data, credits_left = fetch_odds_data(HARDCODED_API_KEY, available_sports)
-            df = process_market_data(raw_data)
-            
+        
+        # Live visual progress tracking elements on home screen
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        raw_data, credits_left = fetch_odds_data(HARDCODED_API_KEY, available_sports, progress_bar, status_text)
+        
+        # Clear progress indicators once finished
+        progress_bar.empty()
+        status_text.empty()
+        
+        df = process_market_data(raw_data)
+        
         if credits_left:
             st.sidebar.success(f"API Quota Remaining: {credits_left} credits")
             
@@ -129,7 +151,7 @@ def main():
         else:
             st.warning("No active lines returned. Verify active sport schedules or API key quota.")
     else:
-        st.info("Configure your filters in the sidebar and click **🚀 Run Live Board Scan** to initiate requests.")
+        st.info("Ready. Click **🚀 Run Live Board Scan** above to fetch live odds matrices.")
 
 if __name__ == "__main__":
     main()
