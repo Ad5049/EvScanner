@@ -22,9 +22,10 @@ base_unit_size = st.sidebar.number_input("Base Unit Size ($)", value=5.0, step=1
 min_edge = st.sidebar.slider("Minimum Edge (+EV %)", min_value=1.0, max_value=25.0, value=5.0, step=0.5)
 max_odds_cap = st.sidebar.number_input("Max American Odds Cap (+400)", value=400, step=50)
 
-include_props = st.sidebar.checkbox("Include Player Props Scanning", value=True)
+include_props = st.sidebar.checkbox("Include Player Props Scanning", value=False)
 exclude_started = st.sidebar.checkbox("Exclude Live / Started Games", value=True)
 
+# Explicit bookmaker array spanning standard, social, and exchange feeds
 BOOKMAKERS = [
     "draftkings",
     "hardrockbet_fl",
@@ -44,7 +45,7 @@ def fetch_sports_catalog(api_key):
             return [s['key'] for s in sports if s.get('active', True)]
     except Exception:
         pass
-    return ["icehockey_nhl", "basketball_nba", "baseball_mlb", "americanfootball_nfl"]
+    return ["icehockey_nhl", "basketball_nba", "baseball_mlb"]
 
 # --- DATA FETCHING LAYER ---
 @st.cache_data(ttl=60)
@@ -58,11 +59,10 @@ def fetch_odds_data(api_key, sport_keys):
     if include_props:
         markets += ",player_props"
         
-    for sport_key in sport_keys[:4]:  # Focused scan window on top 4 active sports
+    for sport_key in sport_keys[:3]:  # Target top 3 active sports for fast execution
         url = f"{BASE_URL}/{sport_key}/odds/"
         params = {
             "apiKey": api_key,
-            "regions": "us,us2,us_ex",
             "markets": markets,
             "oddsFormat": "american",
             "bookmakers": ",".join(BOOKMAKERS)
@@ -76,6 +76,8 @@ def fetch_odds_data(api_key, sport_keys):
                 data = response.json()
                 if isinstance(data, list):
                     all_raw_data.extend(data)
+            else:
+                st.sidebar.error(f"API Error [{sport_key}]: {response.status_code} - {response.text}")
         except Exception:
             continue
             
@@ -118,7 +120,7 @@ def main():
     if st.button("Run Fresh Scan"):
         st.cache_data.clear()
         
-    with st.spinner("Fetching active odds matrix across all configured books..."):
+    with st.spinner("Executing direct odds fetch across configured books..."):
         raw_data, credits_left = fetch_odds_data(HARDCODED_API_KEY, available_sports)
         df = process_market_data(raw_data)
         
@@ -129,7 +131,7 @@ def main():
         st.success(f"Successfully loaded {len(df)} active lines. Filtering for edges >= {min_edge}% EV.")
         st.dataframe(df, use_container_width=True, height=500)
     else:
-        st.warning("No active lines returned. Check your API credit balance or active sport availability.")
+        st.info("No active lines returned. Verify active sport schedules or API key quota.")
 
 if __name__ == "__main__":
     main()
